@@ -26,7 +26,7 @@ def test_grok():
         # but for verification we should try a real call if possible or check client init.
         # Actually scraper.py fetch_x_updates calls the API. 
         # Let's try to call it.
-        results = monitor.fetch_x_updates(company_name)
+        results = monitor.fetch_x_updates(company_name, custom_query="Test query")
         
         print("\n--- API Response ---")
         print(json.dumps(results, indent=2, ensure_ascii=False))

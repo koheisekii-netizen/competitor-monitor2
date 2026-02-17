@@ -91,6 +91,9 @@ class CompetitorMonitor:
             return []
 
         records = worksheet.get_all_records()
+        print(f"Config: Found {len(records)} targets")
+        for i, r in enumerate(records):
+            print(f"  [{i+1}] Keys: {list(r.keys())} | Company: '{r.get('Company Name', 'N/A')}'")
         return records
 
     def is_relevant(self, text):
@@ -102,13 +105,18 @@ class CompetitorMonitor:
                 return True
         return False
 
-    def fetch_x_updates(self, company_name):
+    def fetch_x_updates(self, company_name, custom_query=None):
         """Fetch X updates using Grok API with keyword filtering."""
-        print(f"Fetching X updates for {company_name}...")
+        print(f"Fetching X updates for {company_name} (Query: {custom_query if custom_query else 'default'})...")
         
-        keywords_str = " OR ".join(f'"{k}"' for k in KEYWORDS)
+        if custom_query:
+            query_instruction = f"Target: {company_name}. Specific search context: {custom_query}."
+        else:
+            keywords_str = " OR ".join(f'"{k}"' for k in KEYWORDS)
+            query_instruction = f"Recent posts or news regarding '{company_name}' on X (formerly Twitter) that match ANY of these keywords: {keywords_str}."
+
         prompt = f"""
-        Search for recent posts or news regarding "{company_name}" on X (formerly Twitter) that match ANY of these keywords: {keywords_str}.
+        {query_instruction}
         
         Focus on official announcements or significant buzz related to these topics.
         Return a JSON list of objects with 'title', 'url' (if available, else null), and 'summary'.
@@ -118,7 +126,7 @@ class CompetitorMonitor:
 
         try:
             response = self.client_ai.chat.completions.create(
-                model="grok-4",
+                model="grok-3",
                 messages=[
                     {"role": "system", "content": "You are a research assistant. Output only JSON."},
                     {"role": "user", "content": prompt},
@@ -376,7 +384,8 @@ class CompetitorMonitor:
             if not company: continue
 
             # 1. Check X (Grok)
-            x_updates = self.fetch_x_updates(company)
+            x_query = target.get('X Query (Optional)') or target.get('X Query')
+            x_updates = self.fetch_x_updates(company, custom_query=x_query)
             if x_updates:
                 for update in x_updates:
                     all_results.append({
