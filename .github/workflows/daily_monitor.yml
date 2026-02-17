@@ -1,0 +1,37 @@
+name: Daily Competitor Monitor
+
+on:
+  schedule:
+    # JST 9:00 = UTC 0:00
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Scraper
+      env:
+        GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+        SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+        GMAIL_USER: ${{ secrets.GMAIL_USER }}
+        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        TO_EMAIL: ${{ secrets.TO_EMAIL }}
+      run: |
+        # Create service_account.json from secret
+        echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > service_account.json
+        python scraper.py
