@@ -127,7 +127,23 @@ class CompetitorMonitor:
             content = response.choices[0].message.content
             # Clean up potential markdown blocks
             content = content.replace("```json", "").replace("```", "").strip()
-            return json.loads(content)
+            results = json.loads(content)
+            
+            # Validate URLs - Grok often returns fake/hallucinated URLs
+            for item in results:
+                url = item.get('url')
+                if url:
+                    try:
+                        r = requests.head(url, headers=self.headers, timeout=5, allow_redirects=True)
+                        if r.status_code >= 400:
+                            # Replace with X search link
+                            item['url'] = f"https://x.com/search?q={company_name}&src=typed_query"
+                    except Exception:
+                        item['url'] = f"https://x.com/search?q={company_name}&src=typed_query"
+                else:
+                    item['url'] = f"https://x.com/search?q={company_name}&src=typed_query"
+            
+            return results
         except Exception as e:
             print(f"Error fetching X for {company_name}: key error or other issue: {e}")
             return []
@@ -224,13 +240,57 @@ class CompetitorMonitor:
             print(f"Error scraping IR {url}: {e}")
             return []
 
+    def summarize_article(self, url, title):
+        """Fetch article content and generate a summary using Grok."""
+        if not url or url == 'No URL':
+            return ""
+        
+        try:
+            # Fetch page content
+            response = requests.get(url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Extract main text (remove scripts, styles, nav)
+            for tag in soup(['script', 'style', 'nav', 'header', 'footer']):
+                tag.decompose()
+            text = soup.get_text(separator='\n', strip=True)
+            # Limit to first 3000 chars to avoid token limits
+            text = text[:3000]
+            
+            if not text.strip():
+                return ""
+            
+            # Use Grok to summarize
+            prompt = f"""以下の記事内容を日本語で200文字以内に要約してください。
+記事タイトル: {title}
+記事内容:
+{text}
+
+要約のみを出力してください。"""
+            
+            ai_response = self.client_ai.chat.completions.create(
+                model="grok-4",
+                messages=[
+                    {"role": "system", "content": "あなたは記事要約の専門家です。簡潔に要約してください。"},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            summary = ai_response.choices[0].message.content.strip()
+            print(f"  Summarized: {title[:50]}...")
+            return summary[:500]  # Safety limit
+            
+        except Exception as e:
+            print(f"  Could not summarize {url}: {e}")
+            return ""
+
     def save_results(self, results):
         """Save relevant results to 'Data' sheet, avoiding duplicates."""
         try:
             worksheet = self.sheet.worksheet("Data")
         except gspread.exceptions.WorksheetNotFound:
-            worksheet = self.sheet.add_worksheet(title="Data", rows=1000, cols=6)
-            worksheet.append_row(["Date", "Company", "Source", "Title", "URL", "Summary"])
+            worksheet = self.sheet.add_worksheet(title="Data", rows=1000, cols=7)
+            worksheet.append_row(["Date", "Company", "Source", "Title", "URL", "Summary", "Article Summary"])
 
         # Fetch existing URLs to avoid duplicates
         existing_records = worksheet.get_all_records()
@@ -245,13 +305,17 @@ class CompetitorMonitor:
                 print(f"Skipping duplicate: {res['title']}")
                 continue
                 
+            # Generate article summary using Grok
+            article_summary = self.summarize_article(url, res['title'])
+            
             rows_to_add.append([
                 datetime.now().strftime("%Y-%m-%d"),
                 res['company'],
                 res['source'],
                 res['title'],
                 url,
-                res['summary']
+                res['summary'],
+                article_summary
             ])
             print(f"Saved: {res['title']}")
             # Add to local set to avoid duplicates within the same run
@@ -259,6 +323,9 @@ class CompetitorMonitor:
         
         if rows_to_add:
             worksheet.append_rows(rows_to_add)
+        
+        # Return results with article summaries for email
+        return [r for r in results if str(r.get('url', '')).strip() not in (existing_urls - {str(r.get('url', '')).strip() for r in results})]
 
     def send_email(self, results):
         """Send email notification efficiently."""
@@ -278,7 +345,10 @@ class CompetitorMonitor:
         body = "以下の更新がありました。\n\n"
         for i, res in enumerate(results, 1):
             body += f"{i}. [{res['company']}] {res['title']} ({res['source']})\n"
-            body += f"   {res.get('url', 'No URL')}\n\n"
+            body += f"   {res.get('url', 'No URL')}\n"
+            if res.get('article_summary'):
+                body += f"   📝 {res['article_summary']}\n"
+            body += "\n"
         
         body += f"スプレッドシートを確認: https://docs.google.com/spreadsheets/d/{self.spreadsheet_id}"
         msg.attach(MIMEText(body, 'plain'))
@@ -330,8 +400,8 @@ class CompetitorMonitor:
                 all_results.extend(ir_updates)
 
         if all_results:
-            self.save_results(all_results)
-            self.send_email(all_results)
+            saved_results = self.save_results(all_results)
+            self.send_email(saved_results if saved_results else all_results)
         else:
             print("No relevant updates found.")
 
