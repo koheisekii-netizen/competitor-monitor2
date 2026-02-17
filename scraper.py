@@ -1,30 +1,25 @@
 import os
 import sys
-import glob
-
-# Allow importing from user site-packages if not in PATH
-user_site_packages = glob.glob(os.path.expanduser("~\\AppData\\Roaming\\Python\\Python3*\\site-packages"))
-if user_site_packages:
-    sys.path.append(user_site_packages[0])
-
 import json
+import glob
+import smtplib
+from datetime import datetime
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# Allow importing from user site-packages if not in PATH (Windows only)
+if sys.platform == 'win32':
+    user_site_packages = glob.glob(os.path.expanduser("~\\AppData\\Roaming\\Python\\Python3*\\site-packages"))
+    if user_site_packages:
+        sys.path.append(user_site_packages[0])
+
 import requests
 import gspread
 from google.oauth2.service_account import Credentials
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from openai import OpenAI
-from datetime import datetime
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import os
-from dotenv import load_dotenv
-from openai import OpenAI
-from datetime import datetime
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+
 
 # Load environment variables
 load_dotenv()
