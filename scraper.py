@@ -34,9 +34,9 @@ class CompetitorMonitor:
         self.spreadsheet_id = os.getenv("SPREADSHEET_ID")
         
         if not self.grok_api_key:
-            raise ValueError("GROK_API_KEY not found in .env")
+            raise ValueError("GROK_API_KEY not found. Set it in .env or as environment variable.")
         if not self.spreadsheet_id:
-            raise ValueError("SPREADSHEET_ID not found in .env")
+            raise ValueError("SPREADSHEET_ID not found. Set it in .env or as environment variable.")
         
         # Initialize Google Sheets Client (using google-auth)
         scope = [
@@ -44,17 +44,21 @@ class CompetitorMonitor:
             'https://www.googleapis.com/auth/drive'
         ]
         
-        # Load service account info and fix private key newlines
-        with open(SERVICE_ACCOUNT_FILE, 'r', encoding='utf-8') as f:
-            service_account_info = json.load(f)
-            # Ensure private key has correct newlines
-            if 'private_key' in service_account_info:
-                key = service_account_info['private_key']
-                # Replace literal \n with actual newline
-                key = key.replace('\\n', '\n')
-                # Remove any other stray backslashes (e.g. from invalid escapes like \u)
-                key = key.replace('\\', '')
-                service_account_info['private_key'] = key
+        # Load service account info: try env var first (GitHub Actions), then file (local)
+        sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+        if sa_json:
+            print("Loading service account from environment variable...")
+            service_account_info = json.loads(sa_json)
+        else:
+            print(f"Loading service account from {SERVICE_ACCOUNT_FILE}...")
+            with open(SERVICE_ACCOUNT_FILE, 'r', encoding='utf-8') as f:
+                service_account_info = json.load(f)
+        
+        # Ensure private key has correct newlines
+        if 'private_key' in service_account_info:
+            key = service_account_info['private_key']
+            key = key.replace('\\n', '\n')
+            service_account_info['private_key'] = key
                 
         creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
         self.client_gs = gspread.authorize(creds)
