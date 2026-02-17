@@ -45,10 +45,15 @@ class CompetitorMonitor:
         ]
         
         # Load service account info: try env var first (GitHub Actions), then file (local)
-        sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+        sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
         if sa_json:
-            print("Loading service account from environment variable...")
-            service_account_info = json.loads(sa_json)
+            print(f"Loading service account from environment variable (length: {len(sa_json)} chars)...")
+            try:
+                service_account_info = json.loads(sa_json)
+            except json.JSONDecodeError as e:
+                print(f"ERROR: GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON: {e}")
+                print(f"First 50 chars: {repr(sa_json[:50])}")
+                raise
         else:
             print(f"Loading service account from {SERVICE_ACCOUNT_FILE}...")
             with open(SERVICE_ACCOUNT_FILE, 'r', encoding='utf-8') as f:
